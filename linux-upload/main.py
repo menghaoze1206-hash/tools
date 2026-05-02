@@ -158,14 +158,22 @@ async def upload_files(
 @app.get("/api/files")
 async def list_files():
     files = []
-    for p in sorted(UPLOAD_DIR.rglob("*"), key=lambda x: x.stat().st_mtime, reverse=True):
-        if p.is_file():
-            rel = str(p.relative_to(UPLOAD_DIR))
-            files.append({
-                "name": rel,
-                "size": p.stat().st_size,
-                "modified": p.stat().st_mtime,
-            })
+    entries = []
+    for p in UPLOAD_DIR.rglob("*"):
+        try:
+            if p.is_file():
+                st = p.stat()
+                entries.append((p, st))
+        except OSError:
+            continue
+    entries.sort(key=lambda x: x[1].st_mtime, reverse=True)
+    for p, st in entries:
+        rel = str(p.relative_to(UPLOAD_DIR))
+        files.append({
+            "name": rel,
+            "size": st.st_size,
+            "modified": st.st_mtime,
+        })
     return {"files": files}
 
 
@@ -185,17 +193,3 @@ async def download_file(filename: str):
     if not file_path.exists():
         return JSONResponse({"error": "File not found"}, status_code=404)
     return FileResponse(file_path, filename=filename)
-
-
-@app.delete("/api/files/{filename:path}")
-async def delete_file(filename: str):
-    file_path = _safe_path(UPLOAD_DIR, filename)
-    if file_path is None:
-        return JSONResponse({"error": "Forbidden"}, status_code=403)
-    if not file_path.exists():
-        return JSONResponse({"error": "File not found"}, status_code=404)
-    try:
-        os.remove(file_path)
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)

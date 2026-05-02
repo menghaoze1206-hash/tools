@@ -533,22 +533,9 @@ async function loadFileList() {
       </div>
       <div class="row-actions">
         <a href="/api/download/${encodeURIComponent(f.name)}" download>下载</a>
-        <button class="del" onclick="deleteFile('${esc(f.name)}')">删除</button>
       </div>
     </li>
   `).join('');
-}
-
-async function deleteFile(name) {
-  if (!confirm(`确定删除 ${name}？`)) return;
-  const res = await fetch(`/api/files/${encodeURIComponent(name)}`, { method: 'DELETE' });
-  if (res.ok) {
-    toast('已删除 ' + name);
-    loadFileList();
-  } else {
-    const data = await res.json();
-    toast('删除失败: ' + data.error);
-  }
 }
 
 // ---- paste support ----
