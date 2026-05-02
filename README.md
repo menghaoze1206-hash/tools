@@ -2,6 +2,16 @@
 
 个人工具代码库，收录各类实用工具。
 
+## 环境准备
+
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/)（Python 包管理器）
+
+```bash
+# 安装 uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 ## 使用
 
 ```bash
@@ -17,5 +27,5 @@ cd tools
 
 ```bash
 cd linux-upload
-uv run uvicorn main:app --port 8000
+uv run --with fastapi --with uvicorn uvicorn main:app --port 8000
 ```
