@@ -23,5 +23,5 @@ cd tools
 ```bash
 cd linux-upload
 pip install fastapi uvicorn
-python3 -m uvicorn main:app --port 8000
+uvicorn main:app --port 8000
 ```
