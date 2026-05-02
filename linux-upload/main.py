@@ -4,7 +4,7 @@ import shutil
 import socket
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -104,13 +104,17 @@ async def index():
 @app.post("/api/upload")
 async def upload_files(
     files: List[UploadFile] = File(...),
-    paths: List[str] = Form(default=[]),
+    paths: str = Form(default="[]"),
 ):
     uploaded = []
     failed = []
+    try:
+        paths_list = json.loads(paths)
+    except (json.JSONDecodeError, TypeError):
+        paths_list = []
 
     for i, file in enumerate(files):
-        rel_path = paths[i] if i < len(paths) else file.filename
+        rel_path = paths_list[i] if i < len(paths_list) else file.filename
         if not rel_path:
             rel_path = file.filename
         try:
@@ -140,9 +144,19 @@ async def list_files():
     return {"files": files}
 
 
+def _safe_path(base: Path, rel: str) -> Optional[Path]:
+    """Resolve a relative path within base. Returns None on escape attempt."""
+    resolved = (base / rel).resolve()
+    if resolved.is_relative_to(base):
+        return resolved
+    return None
+
+
 @app.get("/api/download/{filename:path}")
 async def download_file(filename: str):
-    file_path = UPLOAD_DIR / filename
+    file_path = _safe_path(UPLOAD_DIR, filename)
+    if file_path is None:
+        return JSONResponse({"error": "Forbidden"}, status_code=403)
     if not file_path.exists():
         return JSONResponse({"error": "File not found"}, status_code=404)
     return FileResponse(file_path, filename=filename)
@@ -150,7 +164,9 @@ async def download_file(filename: str):
 
 @app.delete("/api/files/{filename:path}")
 async def delete_file(filename: str):
-    file_path = UPLOAD_DIR / filename
+    file_path = _safe_path(UPLOAD_DIR, filename)
+    if file_path is None:
+        return JSONResponse({"error": "Forbidden"}, status_code=403)
     if not file_path.exists():
         return JSONResponse({"error": "File not found"}, status_code=404)
     try:
