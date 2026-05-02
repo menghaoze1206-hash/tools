@@ -344,7 +344,7 @@ async function loadConfig() {
     uploadTarget = data.upload_dir || '/';
     uploadPathLabel.textContent = uploadTarget;
     browseDir(uploadTarget);
-  } catch (e) { browseDir('/'); }
+  } catch (e) { browseDir(''); }
 }
 
 // ---- queue ----
