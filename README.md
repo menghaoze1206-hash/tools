@@ -25,3 +25,17 @@ cd linux-upload
 pip3 install fastapi uvicorn
 python3 -m uvicorn main:app --port 8787
 ```
+
+### 生产环境部署
+
+```bash
+# 多 worker 进程 + 信任反向代理头
+python3 -m uvicorn main:app \
+  --host 0.0.0.0 \
+  --port 8787 \
+  --workers 4 \
+  --proxy-headers \
+  --log-level info
+```
+
+建议配合 Nginx 反向代理和 systemd 托管运行。

@@ -89,6 +89,22 @@
   }
   .queue-item .remove-btn:hover { color: #f85149; background: rgba(248,81,73,.1); }
 
+  /* ---- progress bar ---- */
+  .progress-wrap { margin-bottom: 24px; display: none; }
+  .progress-wrap.active { display: block; }
+  .progress-bar {
+    width: 100%; height: 6px;
+    background: #21262d; border-radius: 3px; overflow: hidden;
+  }
+  .progress-bar .fill {
+    height: 100%; width: 0%;
+    background: #238636; border-radius: 3px;
+    transition: width .15s;
+  }
+  .progress-text {
+    text-align: right; font-size: 12px; color: #8b949e; margin-top: 4px;
+  }
+
   /* ---- upload btn ---- */
   .actions { display: flex; gap: 10px; margin-bottom: 32px; }
   .btn {
@@ -185,6 +201,12 @@
   <!-- queue -->
   <div class="queue" id="queue"></div>
 
+  <!-- progress -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
+    <div class="progress-text" id="progressText"></div>
+  </div>
+
   <!-- actions -->
   <div class="actions">
     <button class="btn btn-primary" id="uploadBtn" disabled>上传</button>
@@ -212,6 +234,9 @@ const uploadBtn = $('#uploadBtn');
 const clearBtn = $('#clearBtn');
 const fileListEl = $('#fileList');
 const toastEl = $('#toast');
+const progressWrap = $('#progressWrap');
+const progressFill = $('#progressFill');
+const progressText = $('#progressText');
 const curPathEl = $('#curPath');
 const dirListEl = $('#dirList');
 const backBtn = $('#backBtn');
@@ -446,21 +471,46 @@ uploadBtn.addEventListener('click', async () => {
 
   uploadBtn.disabled = true;
   uploadBtn.textContent = '上传中...';
+  progressWrap.classList.add('active');
+  progressFill.style.width = '0%';
+  progressText.textContent = '0%';
 
-  try {
-    const res = await fetch('/api/upload', { method: 'POST', body: form });
-    const data = await res.json();
-    if (data.failed.length > 0) {
-      toast(`上传完成：${data.uploaded.length} 成功，${data.failed.length} 失败`);
-    } else {
-      toast(`成功上传 ${data.uploaded.length} 个文件`);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/upload');
+
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const pct = Math.round((e.loaded / e.total) * 100);
+      progressFill.style.width = pct + '%';
+      progressText.textContent = pct + '%';
+      uploadBtn.textContent = `上传中... ${pct}%`;
     }
-    clearQueue();
-    loadFileList();
-  } catch (err) {
-    toast('上传失败: ' + err.message);
-  }
-  uploadBtn.textContent = '上传';
+  };
+
+  xhr.onload = () => {
+    try {
+      const data = JSON.parse(xhr.responseText);
+      if (data.failed.length > 0) {
+        toast(`上传完成：${data.uploaded.length} 成功，${data.failed.length} 失败`);
+      } else {
+        toast(`成功上传 ${data.uploaded.length} 个文件`);
+      }
+      clearQueue();
+      loadFileList();
+    } catch (err) {
+      toast('解析响应失败');
+    }
+    uploadBtn.textContent = '上传';
+    progressWrap.classList.remove('active');
+  };
+
+  xhr.onerror = () => {
+    toast('上传失败: 网络错误');
+    uploadBtn.textContent = '上传';
+    progressWrap.classList.remove('active');
+  };
+
+  xhr.send(form);
 });
 
 // ---- file list ----
