@@ -2,6 +2,13 @@
 
 个人工具代码库，收录各类实用工具。
 
+## 使用
+
+```bash
+git clone git@github.com:menghaoze1206-hash/tools.git
+cd tools
+```
+
 ## 工具列表
 
 ### linux-upload
