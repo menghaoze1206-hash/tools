@@ -4,7 +4,15 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+import main
 from main import app
+
+
+@pytest.fixture(autouse=True)
+def _isolate_config(monkeypatch, tmp_path):
+    """将 config.json 重定向到临时文件，避免污染真实配置。"""
+    tmp_config = tmp_path / "config.json"
+    monkeypatch.setattr(main, "CONFIG_FILE", tmp_config)
 
 
 @pytest.fixture

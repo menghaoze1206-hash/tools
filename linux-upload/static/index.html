@@ -50,6 +50,7 @@
     border-bottom: 1px solid #21262d11;
   }
   .dir-browser .list .entry:hover { background: #1c2128; }
+  .dir-browser .list .entry.drag-over { background: rgba(88,166,255,.12); outline: 1px solid #58a6ff; }
   .dir-browser .list .entry .icon { color: #8b949e; flex-shrink: 0; }
   .dir-browser .list .entry .name {
     flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -310,6 +311,36 @@ function renderDirList(entries) {
 function esc_attr(str) {
   return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+
+let dirDragEntry = null;
+
+dirListEl.addEventListener('dragover', (e) => {
+  const entry = e.target.closest('.entry');
+  if (entry && entry.dataset.path) {
+    e.preventDefault();
+    if (dirDragEntry !== entry) {
+      dirDragEntry?.classList.remove('drag-over');
+      dirDragEntry = entry;
+      entry.classList.add('drag-over');
+    }
+  }
+});
+
+dirListEl.addEventListener('dragleave', () => {
+  dirDragEntry?.classList.remove('drag-over');
+  dirDragEntry = null;
+});
+
+dirListEl.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  dirDragEntry?.classList.remove('drag-over');
+  const entry = e.target.closest('.entry');
+  if (entry && entry.dataset.path) {
+    setUploadTarget(entry.dataset.path);
+    await handleDropItems(e.dataTransfer.items);
+  }
+  dirDragEntry = null;
+});
 
 dirListEl.addEventListener('click', (e) => {
   const entry = e.target.closest('.entry');
