@@ -2,9 +2,13 @@ import json
 import logging
 import os
 import socket
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional, Union
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +28,8 @@ CONFIG_FILE = BASE_DIR / "config.json"
 UPLOAD_DIR = BASE_DIR / "uploads"
 MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500 MB per file
 BROWSE_ROOT = Path.home()  # 目录浏览限制在用户 home 目录内
+AUTH_TOKEN = os.environ.get("AUTH_TOKEN", "")  # 为空则不启用认证
+_upload_lock = threading.Lock()  # UPLOAD_DIR 并发保护
 
 if CONFIG_FILE.exists():
     try:
@@ -39,6 +45,10 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 async def lifespan(app: FastAPI):
     port = int(os.environ.get("UVICORN_PORT", "8787"))
     logger.info("服务启动")
+    if AUTH_TOKEN:
+        logger.info("  认证已启用: Bearer <token>")
+    else:
+        logger.info("  认证未启用")
     logger.info("  Local:   http://127.0.0.1:%s", port)
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -51,15 +61,25 @@ async def lifespan(app: FastAPI):
     yield
 
 
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if AUTH_TOKEN and request.url.path.startswith("/api/"):
+            auth = request.headers.get("Authorization", "")
+            if auth != f"Bearer {AUTH_TOKEN}":
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return await call_next(request)
+
+
 app = FastAPI(title="Linux File Upload Tool", lifespan=lifespan)
+app.add_middleware(AuthMiddleware)
 
 
 class ConfigPayload(BaseModel):
     upload_dir: str
 
 
-@app.get("/api/browse")
-async def browse_dir(path: str = ""):
+@app.get("/api/browse", response_model=None)
+async def browse_dir(path: str = "") -> Union[dict[str, object], JSONResponse]:
     p = Path(path or str(BROWSE_ROOT)).expanduser().resolve()
     if not p.is_relative_to(BROWSE_ROOT):
         return JSONResponse({"error": "浏览范围限于用户目录"}, status_code=403)
@@ -88,34 +108,35 @@ async def browse_dir(path: str = ""):
 
 
 @app.get("/api/config")
-async def get_config():
+async def get_config() -> dict[str, str]:
     return {"upload_dir": str(UPLOAD_DIR.resolve())}
 
 
-@app.post("/api/config")
-async def set_config(payload: ConfigPayload):
+@app.post("/api/config", response_model=None)
+async def set_config(payload: ConfigPayload) -> Union[dict[str, object], JSONResponse]:
     global UPLOAD_DIR
     new_dir = Path(payload.upload_dir).expanduser().resolve()
     try:
         new_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         return JSONResponse({"error": f"无法创建目录: {e}"}, status_code=400)
-    UPLOAD_DIR = new_dir
-    CONFIG_FILE.write_text(json.dumps({"upload_dir": str(new_dir)}, indent=2))
+    with _upload_lock:
+        UPLOAD_DIR = new_dir
+        CONFIG_FILE.write_text(json.dumps({"upload_dir": str(new_dir)}, indent=2))
     return {"ok": True, "upload_dir": str(new_dir)}
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index():
+async def index() -> str:
     html_path = STATIC_DIR / "index.html"
     return html_path.read_text(encoding="utf-8")
 
 
 @app.post("/api/upload")
 async def upload_files(
-    files: List[UploadFile] = File(...),
+    files: list[UploadFile] = File(...),
     paths: str = Form(default="[]"),
-):
+) -> dict[str, list[dict[str, object]]]:
     uploaded = []
     failed = []
     try:
@@ -156,7 +177,7 @@ async def upload_files(
 
 
 @app.get("/api/files")
-async def list_files():
+async def list_files() -> dict[str, list[dict[str, object]]]:
     files = []
     entries = []
     for p in UPLOAD_DIR.rglob("*"):
@@ -185,8 +206,8 @@ def _safe_path(base: Path, rel: str) -> Optional[Path]:
     return None
 
 
-@app.get("/api/download/{filename:path}")
-async def download_file(filename: str):
+@app.get("/api/download/{filename:path}", response_model=None)
+async def download_file(filename: str) -> Union[FileResponse, JSONResponse]:
     file_path = _safe_path(UPLOAD_DIR, filename)
     if file_path is None:
         return JSONResponse({"error": "Forbidden"}, status_code=403)

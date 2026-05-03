@@ -42,7 +42,7 @@
   .dir-browser .header button:hover { background: #30363d; }
   .dir-browser .header button.back { font-size: 15px; padding: 4px 8px; line-height: 1; }
   .dir-browser .list {
-    max-height: 240px; overflow-y: auto;
+    max-height: 420px; overflow-y: auto;
   }
   .dir-browser .list .entry {
     display: flex; align-items: center; gap: 10px;
@@ -249,6 +249,8 @@ let pendingFiles = [];
 let currentPath = '/';
 let uploadTarget = '';
 
+const MAX_FILE_SIZE = 500 * 1024 * 1024;  // 500MB, 与服务端一致
+
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -296,7 +298,7 @@ function renderDirList(entries) {
     return;
   }
   dirListEl.innerHTML = dirs.map(e => `
-    <div class="entry" onclick="browseDir('${esc_attr(e.path)}', true)">
+    <div class="entry" data-path="${esc_attr(e.path)}">
       <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
       </svg>
@@ -308,6 +310,13 @@ function renderDirList(entries) {
 function esc_attr(str) {
   return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+
+dirListEl.addEventListener('click', (e) => {
+  const entry = e.target.closest('.entry');
+  if (entry && entry.dataset.path) {
+    browseDir(entry.dataset.path, true);
+  }
+});
 
 backBtn.addEventListener('click', () => {
   const parent = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
@@ -349,12 +358,15 @@ async function loadConfig() {
 
 // ---- queue ----
 function addFiles(files) {
+  let skipped = 0;
   for (const f of files) {
+    if (f.size > MAX_FILE_SIZE) { skipped++; continue; }
     const fp = f._relativePath || f.webkitRelativePath || f.name;
     if (pendingFiles.find(x => (x._relativePath || x.name) === fp && x.size === f.size)) continue;
     if (!f._relativePath) f._relativePath = f.webkitRelativePath || f.name;
     pendingFiles.push(f);
   }
+  if (skipped > 0) toast(`${skipped} 个文件超过大小限制 (${formatSize(MAX_FILE_SIZE)})，已跳过`);
   renderQueue();
 }
 
@@ -426,7 +438,7 @@ function renderQueue() {
     <div class="queue-item">
       <span class="name">${esc(f._relativePath || f.name)}</span>
       <span class="size">${formatSize(f.size)}</span>
-      <button class="remove-btn" onclick="removeFile(${i})">&times;</button>
+      <button class="remove-btn" data-idx="${i}">&times;</button>
     </div>
   `).join('');
 }
@@ -452,6 +464,13 @@ dropZone.addEventListener('drop', async (e) => {
   e.preventDefault();
   dropZone.classList.remove('drag-over');
   await handleDropItems(e.dataTransfer.items);
+});
+
+queueEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.remove-btn');
+  if (btn && btn.dataset.idx !== undefined) {
+    removeFile(parseInt(btn.dataset.idx, 10));
+  }
 });
 
 clearBtn.addEventListener('click', clearQueue);
@@ -515,12 +534,14 @@ uploadBtn.addEventListener('click', async () => {
 
 // ---- file list ----
 async function loadFileList() {
-  const res = await fetch('/api/files');
-  const data = await res.json();
-  if (data.files.length === 0) {
-    fileListEl.innerHTML = '<li class="empty">暂无文件</li>';
-    return;
-  }
+  try {
+    const res = await fetch('/api/files');
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    if (data.files.length === 0) {
+      fileListEl.innerHTML = '<li class="empty">暂无文件</li>';
+      return;
+    }
   fileListEl.innerHTML = data.files.map(f => `
     <li class="file-row">
       <svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -536,6 +557,9 @@ async function loadFileList() {
       </div>
     </li>
   `).join('');
+  } catch (e) {
+    fileListEl.innerHTML = '<li class="empty">加载失败，请检查服务状态</li>';
+  }
 }
 
 // ---- paste support ----
