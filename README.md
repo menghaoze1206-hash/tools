@@ -73,3 +73,36 @@ docker run -d -p 8787:8787 \
   -e AUTH_TOKEN=your-secret-token \
   linux-upload
 ```
+
+### llm-usage
+
+查询 DeepSeek API 余额的 CLI 工具。
+
+#### 快速启动
+
+```bash
+cd llm-usage
+pip3 install -r requirements.txt
+
+# 全局安装（可选）
+ln -sf "$PWD/cli.py" ~/.local/bin/dpb
+```
+
+安装后，任意目录下 `dpb` 即可查询余额：
+
+```bash
+dpb           # 查询余额
+dpb --json    # JSON 格式
+dpb help      # 帮助
+```
+
+#### 环境变量
+
+```bash
+DEEPSEEK_API_KEY=your-deepseek-api-key      # API 密钥
+DEEPSEEK_MONTHLY_BUDGET_CNY=100             # 月度预算（可选）
+DEEPSEEK_LOW_BALANCE_CNY=10                 # 低余额提醒阈值（默认 10）
+DEEPSEEK_TARGET_BALANCE_CNY=50              # 目标充值金额（默认 50）
+```
+
+如果没有 `DEEPSEEK_API_KEY`，工具会尝试从 `~/.claude/settings.json` 读取 DeepSeek 配置中的 `ANTHROPIC_AUTH_TOKEN`。
